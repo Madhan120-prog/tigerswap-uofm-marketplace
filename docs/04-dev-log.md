@@ -1,6 +1,6 @@
 # Development Log
 
-## Template (copy for each day)
+## Template
 - Date:
 - Goal today:
 - People:
