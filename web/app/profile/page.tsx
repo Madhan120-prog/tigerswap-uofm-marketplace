@@ -3,74 +3,43 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createBrowserSupabaseClient } from '@/lib/supabase/client';
-import { type Profile, type Listing } from '@/lib/supabase/types';
+import { MOCK_USER, getListingsBySeller } from '@/lib/mock-data';
 import ListingCard from '@/app/components/ListingCard';
+
+interface UserProfile {
+  email: string;
+  name: string;
+}
 
 export default function ProfilePage() {
   const router = useRouter();
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [myListings, setMyListings] = useState<Listing[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
 
+  // Fetch real user from Supabase session
   useEffect(() => {
     const supabase = createBrowserSupabaseClient();
-
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
-      if (!user) {
-        router.push('/login');
-        return;
-      }
-
-      // Fetch profile
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .single();
-
-      if (profileData) {
-        setProfile(profileData);
-      } else {
-        // Profile might not exist yet if trigger hadn't run — fall back to email
-        const namePart = user.email?.split('@')[0] || 'Tiger';
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user?.email) {
+        // Use the part before @ as the display name, or fall back to mock
+        const namePart = user.email.split('@')[0];
         const displayName = namePart
           .split(/[._-]/)
-          .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1))
+          .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
           .join(' ');
-        setProfile({
-          id: user.id,
+        setUserProfile({
+          email: user.email,
           name: displayName,
-          items_listed: 0,
-          items_given: 0,
-          created_at: user.created_at || new Date().toISOString(),
+        });
+      } else {
+        // Fall back to mock user for demo purposes
+        setUserProfile({
+          email: MOCK_USER.email,
+          name: MOCK_USER.name,
         });
       }
-
-      // Fetch my listings
-      const { data: listingsData } = await supabase
-        .from('listings')
-        .select(`
-          *,
-          seller:profiles(id, name, items_listed, items_given, created_at),
-          images:listing_images(id, listing_id, image_url, display_order)
-        `)
-        .eq('seller_id', user.id)
-        .order('created_at', { ascending: false });
-
-      if (listingsData) {
-        const withCovers = listingsData.map((row) => ({
-          ...row,
-          cover_image: row.images?.length
-            ? row.images.sort((a: { display_order: number }, b: { display_order: number }) => a.display_order - b.display_order)[0].image_url
-            : null,
-        }));
-        setMyListings(withCovers);
-      }
-
-      setLoading(false);
     });
-  }, [router]);
+  }, []);
 
   async function handleLogout() {
     setLoggingOut(true);
@@ -79,59 +48,59 @@ export default function ProfilePage() {
     router.push('/login');
   }
 
-  const displayName = profile?.name || 'Tiger';
-  const joinedDate = profile?.created_at
-    ? new Date(profile.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
-    : '';
+  const displayName = userProfile?.name || MOCK_USER.name;
+  const displayEmail = userProfile?.email || MOCK_USER.email;
+  const myListings = getListingsBySeller(MOCK_USER.id);
 
   return (
     <main className="page-container">
       {/* Profile Header */}
       <div className="profile-header animate-slide-up">
-        {loading ? (
-          <div className="profile-skeleton glass-card" />
-        ) : (
-          <div className="profile-card glass-card">
-            <div className="profile-top">
-              <div className="profile-avatar">{displayName.charAt(0)}</div>
-              <div className="profile-info">
-                <h1 className="profile-name">{displayName}</h1>
-                <p className="profile-email">{profile?.id ? '…' : ''}</p>
-                {joinedDate && <p className="profile-joined">Joined {joinedDate}</p>}
-              </div>
+        <div className="profile-card glass-card">
+          <div className="profile-top">
+            <div className="profile-avatar">
+              {displayName.charAt(0)}
             </div>
-
-            {/* Stats */}
-            <div className="profile-stats">
-              <div className="profile-stat">
-                <span className="profile-stat-num">{profile?.items_listed ?? 0}</span>
-                <span className="profile-stat-label">Listed</span>
-              </div>
-              <div className="profile-stat">
-                <span className="profile-stat-num">{myListings.length}</span>
-                <span className="profile-stat-label">Active</span>
-              </div>
-              <div className="profile-stat">
-                <span className="profile-stat-num">{profile?.items_given ?? 0}</span>
-                <span className="profile-stat-label">Given Away</span>
-              </div>
+            <div className="profile-info">
+              <h1 className="profile-name">{displayName}</h1>
+              <p className="profile-email">{displayEmail}</p>
+              <p className="profile-joined">
+                Joined{' '}
+                {new Date(MOCK_USER.joinedAt).toLocaleDateString('en-US', {
+                  month: 'long',
+                  year: 'numeric',
+                })}
+              </p>
             </div>
           </div>
-        )}
-      </div>
 
-      {/* Impact banner */}
-      {!loading && (profile?.items_given ?? 0) > 0 && (
-        <div className="profile-impact glass-card animate-fade-in" style={{ animationDelay: '0.15s' }}>
-          <div className="profile-impact-inner">
-            <span className="profile-impact-emoji">💚</span>
-            <div className="profile-impact-text">
-              <strong>Impact:</strong> You&apos;ve helped {profile?.items_given} item
-              {(profile?.items_given ?? 0) !== 1 ? 's' : ''} find a new home!
+          {/* Stats */}
+          <div className="profile-stats">
+            <div className="profile-stat">
+              <span className="profile-stat-num">{MOCK_USER.itemsListed}</span>
+              <span className="profile-stat-label">Listed</span>
+            </div>
+            <div className="profile-stat">
+              <span className="profile-stat-num">{MOCK_USER.itemsSold}</span>
+              <span className="profile-stat-label">Sold</span>
+            </div>
+            <div className="profile-stat">
+              <span className="profile-stat-num">{MOCK_USER.itemsGiven}</span>
+              <span className="profile-stat-label">Given Away</span>
             </div>
           </div>
         </div>
-      )}
+      </div>
+
+      {/* Impact banner */}
+      <div className="profile-impact glass-card animate-fade-in" style={{ animationDelay: '0.15s' }}>
+        <div className="profile-impact-inner">
+          <span className="profile-impact-emoji">💚</span>
+          <div className="profile-impact-text">
+            <strong>Impact:</strong> You&apos;ve helped {MOCK_USER.itemsGiven} items find a new home!
+          </div>
+        </div>
+      </div>
 
       {/* Actions */}
       <div className="profile-actions animate-fade-in" style={{ animationDelay: '0.2s' }}>
@@ -146,7 +115,6 @@ export default function ProfilePage() {
           className="btn btn-danger profile-action-btn"
           onClick={handleLogout}
           disabled={loggingOut}
-          id="profile-logout-btn"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
@@ -160,13 +128,7 @@ export default function ProfilePage() {
       {/* My Listings */}
       <div className="profile-listings animate-fade-in" style={{ animationDelay: '0.25s' }}>
         <h2 className="profile-listings-title">My Listings</h2>
-        {loading ? (
-          <div className="profile-listings-grid">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="listing-skeleton" />
-            ))}
-          </div>
-        ) : myListings.length > 0 ? (
+        {myListings.length > 0 ? (
           <div className="profile-listings-grid">
             {myListings.map((listing) => (
               <ListingCard key={listing.id} listing={listing} />
@@ -186,15 +148,6 @@ export default function ProfilePage() {
       <style jsx>{`
         .profile-header {
           margin-bottom: 20px;
-        }
-        .profile-skeleton {
-          height: 160px;
-          border-radius: var(--radius-xl);
-          animation: pulse 1.5s ease-in-out infinite;
-        }
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.4; }
         }
         .profile-card {
           padding: 28px;
@@ -311,13 +264,6 @@ export default function ProfilePage() {
           .profile-listings-grid {
             grid-template-columns: repeat(3, 1fr);
           }
-        }
-        .listing-skeleton {
-          height: 220px;
-          border-radius: var(--radius-lg);
-          background: var(--background-card);
-          border: 1px solid var(--border);
-          animation: pulse 1.5s ease-in-out infinite;
         }
         .profile-listings-empty {
           text-align: center;

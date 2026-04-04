@@ -1,10 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import { use } from 'react';
 import Link from 'next/link';
-import { createBrowserSupabaseClient } from '@/lib/supabase/client';
-import { type Listing, formatTimeAgo } from '@/lib/supabase/types';
+import { getListingById, formatTimeAgo } from '@/lib/mock-data';
 
 const CATEGORY_EMOJI: Record<string, string> = {
   Textbooks: '📚',
@@ -23,85 +21,9 @@ export default function ListingDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
-  const [listing, setListing] = useState<Listing | null | undefined>(undefined); // undefined = loading
-  const [images, setImages] = useState<string[]>([]);
-  const [activeImg, setActiveImg] = useState(0);
+  const listing = getListingById(id);
 
-  useEffect(() => {
-    const supabase = createBrowserSupabaseClient();
-
-    supabase
-      .from('listings')
-      .select(`
-        *,
-        seller:profiles(id, name, items_listed, items_given, created_at),
-        images:listing_images(id, listing_id, image_url, display_order)
-      `)
-      .eq('id', id)
-      .single()
-      .then(({ data, error }) => {
-        if (error || !data) {
-          setListing(null);
-          return;
-        }
-
-        const sortedImages: string[] = data.images
-          ? data.images
-              .sort((a: { display_order: number }, b: { display_order: number }) => a.display_order - b.display_order)
-              .map((img: { image_url: string }) => img.image_url)
-          : [];
-
-        setImages(sortedImages);
-        setListing({ ...data, cover_image: sortedImages[0] ?? null });
-      });
-  }, [id]);
-
-  // --- Loading state ---
-  if (listing === undefined) {
-    return (
-      <main className="page-container">
-        <div className="detail-skeleton-layout">
-          <div className="detail-skeleton-img" />
-          <div className="detail-skeleton-info">
-            <div className="skeleton-line short" />
-            <div className="skeleton-line long" />
-            <div className="skeleton-line medium" />
-          </div>
-        </div>
-        <style jsx>{`
-          .detail-skeleton-layout {
-            display: grid;
-            gap: 28px;
-          }
-          @media (min-width: 768px) {
-            .detail-skeleton-layout { grid-template-columns: 1fr 1fr; gap: 40px; }
-          }
-          .detail-skeleton-img {
-            height: 320px;
-            border-radius: var(--radius-xl);
-            background: var(--background-card);
-            border: 1px solid var(--border);
-            animation: pulse 1.5s ease-in-out infinite;
-          }
-          .detail-skeleton-info { display: flex; flex-direction: column; gap: 16px; padding-top: 12px; }
-          .skeleton-line {
-            height: 16px;
-            border-radius: 8px;
-            background: var(--background-card);
-            border: 1px solid var(--border);
-            animation: pulse 1.5s ease-in-out infinite;
-          }
-          .skeleton-line.short { width: 40%; }
-          .skeleton-line.medium { width: 65%; }
-          .skeleton-line.long { width: 100%; height: 24px; }
-          @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
-        `}</style>
-      </main>
-    );
-  }
-
-  // --- Not found ---
-  if (listing === null) {
+  if (!listing) {
     return (
       <main className="page-container">
         <div className="detail-not-found animate-fade-in">
@@ -144,8 +66,6 @@ export default function ListingDetailPage({
         ? 'badge-trade'
         : 'badge-sell';
 
-  const sellerName = listing.seller?.name || 'Unknown Seller';
-
   return (
     <main className="page-container">
       {/* Back button */}
@@ -167,36 +87,11 @@ export default function ListingDetailPage({
 
       <div className="detail-layout animate-slide-up">
         {/* Image area */}
-        <div className="detail-image-section">
-          <div className="detail-image glass-card">
-            {images.length > 0 ? (
-              <img
-                src={images[activeImg]}
-                alt={listing.title}
-                className="detail-image-photo"
-              />
-            ) : (
-              <span className="detail-image-emoji">
-                {CATEGORY_EMOJI[listing.category] || '📦'}
-              </span>
-            )}
-            <span className={`badge ${badgeClass} detail-badge`}>{typeLabel}</span>
-          </div>
-
-          {/* Thumbnail strip */}
-          {images.length > 1 && (
-            <div className="detail-thumbnails">
-              {images.map((url, i) => (
-                <button
-                  key={i}
-                  className={`detail-thumb ${activeImg === i ? 'active' : ''}`}
-                  onClick={() => setActiveImg(i)}
-                >
-                  <img src={url} alt={`Photo ${i + 1}`} />
-                </button>
-              ))}
-            </div>
-          )}
+        <div className="detail-image glass-card">
+          <span className="detail-image-emoji">
+            {CATEGORY_EMOJI[listing.category] || '📦'}
+          </span>
+          <span className={`badge ${badgeClass} detail-badge`}>{typeLabel}</span>
         </div>
 
         {/* Info */}
@@ -211,7 +106,7 @@ export default function ListingDetailPage({
           <div className="detail-meta">
             <span className="detail-condition">{listing.condition} condition</span>
             <span className="detail-dot">·</span>
-            <span className="detail-time">Posted {formatTimeAgo(listing.created_at)}</span>
+            <span className="detail-time">Posted {formatTimeAgo(listing.createdAt)}</span>
           </div>
 
           <p className="detail-description">{listing.description}</p>
@@ -219,19 +114,21 @@ export default function ListingDetailPage({
           {/* Seller card */}
           <div className="detail-seller glass-card">
             <div className="detail-seller-top">
-              <div className="detail-seller-avatar">{sellerName.charAt(0)}</div>
+              <div className="detail-seller-avatar">
+                {listing.seller.name.charAt(0)}
+              </div>
               <div className="detail-seller-info">
-                <span className="detail-seller-name">{sellerName}</span>
-                <span className="detail-seller-label">UofM Student</span>
+                <span className="detail-seller-name">{listing.seller.name}</span>
+                <span className="detail-seller-email">{listing.seller.email}</span>
               </div>
             </div>
             <div className="detail-seller-stats">
               <div className="detail-stat">
-                <span className="detail-stat-num">{listing.seller?.items_listed ?? 0}</span>
+                <span className="detail-stat-num">{listing.seller.itemsListed}</span>
                 <span className="detail-stat-label">Listed</span>
               </div>
               <div className="detail-stat">
-                <span className="detail-stat-num">{listing.seller?.items_given ?? 0}</span>
+                <span className="detail-stat-num">{listing.seller.itemsGiven}</span>
                 <span className="detail-stat-label">Given Away</span>
               </div>
             </div>
@@ -276,18 +173,6 @@ export default function ListingDetailPage({
             gap: 40px;
           }
         }
-        .detail-image-section {
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-        }
-        @media (min-width: 768px) {
-          .detail-image-section {
-            position: sticky;
-            top: calc(var(--navbar-height) + 20px);
-            align-self: start;
-          }
-        }
         .detail-image {
           position: relative;
           height: 280px;
@@ -295,18 +180,13 @@ export default function ListingDetailPage({
           align-items: center;
           justify-content: center;
           background: linear-gradient(135deg, var(--background-elevated), var(--background-secondary));
-          overflow: hidden;
         }
         @media (min-width: 768px) {
           .detail-image {
-            height: 360px;
+            height: 400px;
+            position: sticky;
+            top: calc(var(--navbar-height) + 20px);
           }
-        }
-        .detail-image-photo {
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-          border-radius: var(--radius-lg);
         }
         .detail-image-emoji {
           font-size: 80px;
@@ -318,32 +198,6 @@ export default function ListingDetailPage({
           right: 16px;
           font-size: 14px;
           padding: 6px 14px;
-        }
-        .detail-thumbnails {
-          display: flex;
-          gap: 8px;
-          overflow-x: auto;
-          padding-bottom: 4px;
-        }
-        .detail-thumb {
-          width: 60px;
-          height: 60px;
-          border-radius: var(--radius-md);
-          border: 2px solid var(--border);
-          overflow: hidden;
-          cursor: pointer;
-          padding: 0;
-          background: none;
-          flex-shrink: 0;
-          transition: border-color 0.2s;
-        }
-        .detail-thumb.active {
-          border-color: var(--primary);
-        }
-        .detail-thumb img {
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
         }
         .detail-info {
           display: flex;
@@ -418,7 +272,7 @@ export default function ListingDetailPage({
           font-size: 15px;
           font-weight: 600;
         }
-        .detail-seller-label {
+        .detail-seller-email {
           font-size: 12px;
           color: var(--foreground-muted);
         }

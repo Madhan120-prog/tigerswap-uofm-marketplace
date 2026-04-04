@@ -1,6 +1,6 @@
 'use client';
 
-import { Category, CATEGORIES } from '@/lib/supabase/types';
+import { Category, CATEGORIES } from '@/lib/mock-data';
 
 interface CategoryFilterProps {
   selected: string;

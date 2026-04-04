@@ -1,8 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { type Listing, formatTimeAgo } from '@/lib/supabase/types';
+import { Listing, formatTimeAgo } from '@/lib/mock-data';
 
+// Emoji placeholders per category (since we don't have real images yet)
 const CATEGORY_EMOJI: Record<string, string> = {
   Textbooks: '📚',
   Electronics: '💻',
@@ -28,25 +29,13 @@ export default function ListingCard({ listing }: ListingCardProps) {
         ? 'badge-trade'
         : 'badge-sell';
 
-  // Support both real (created_at) and legacy (createdAt) field names
-  const timestamp = listing.created_at;
-  const sellerName = listing.seller?.name ?? 'Unknown';
-
   return (
     <Link href={`/listings/${listing.id}`} className="listing-card-link">
       <article className="listing-card glass-card">
         <div className="listing-card-image">
-          {listing.cover_image ? (
-            <img
-              src={listing.cover_image}
-              alt={listing.title}
-              className="listing-card-photo"
-            />
-          ) : (
-            <span className="listing-card-emoji">
-              {CATEGORY_EMOJI[listing.category] || '📦'}
-            </span>
-          )}
+          <span className="listing-card-emoji">
+            {CATEGORY_EMOJI[listing.category] || '📦'}
+          </span>
           <span className={`badge ${badgeClass} listing-card-badge`}>{typeLabel}</span>
         </div>
 
@@ -55,11 +44,13 @@ export default function ListingCard({ listing }: ListingCardProps) {
           <div className="listing-card-meta">
             <span className="listing-card-condition">{listing.condition}</span>
             <span className="listing-card-dot">·</span>
-            <span className="listing-card-time">{formatTimeAgo(timestamp)}</span>
+            <span className="listing-card-time">{formatTimeAgo(listing.createdAt)}</span>
           </div>
           <div className="listing-card-seller">
-            <span className="listing-card-avatar">{sellerName.charAt(0)}</span>
-            <span className="listing-card-seller-name">{sellerName}</span>
+            <span className="listing-card-avatar">
+              {listing.seller.name.charAt(0)}
+            </span>
+            <span className="listing-card-seller-name">{listing.seller.name}</span>
           </div>
         </div>
       </article>
@@ -83,12 +74,6 @@ export default function ListingCard({ listing }: ListingCardProps) {
           align-items: center;
           justify-content: center;
           border-bottom: 1px solid var(--border);
-          overflow: hidden;
-        }
-        .listing-card-photo {
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
         }
         .listing-card-emoji {
           font-size: 48px;
