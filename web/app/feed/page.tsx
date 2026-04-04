@@ -1,40 +1,70 @@
 'use client';
 
-import { useState } from 'react';
-import { MOCK_LISTINGS, CATEGORIES, type Category } from '@/lib/mock-data';
+import { useEffect, useState, useCallback } from 'react';
+import { createBrowserSupabaseClient } from '@/lib/supabase/client';
+import { CATEGORIES, type Category, type Listing } from '@/lib/supabase/types';
 import ListingCard from '@/app/components/ListingCard';
 import CategoryFilter from '@/app/components/CategoryFilter';
 
 export default function FeedPage() {
+  const [listings, setListings] = useState<Listing[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [freeFirst, setFreeFirst] = useState(false);
 
-  // Filter listings
-  let filtered = MOCK_LISTINGS;
+  const fetchListings = useCallback(async () => {
+    setLoading(true);
+    const supabase = createBrowserSupabaseClient();
 
-  if (selectedCategory !== 'All') {
-    filtered = filtered.filter((l) => l.category === selectedCategory);
-  }
+    let query = supabase
+      .from('listings')
+      .select(`
+        *,
+        seller:profiles(id, name, items_listed, items_given, created_at),
+        images:listing_images(id, listing_id, image_url, display_order)
+      `)
+      .eq('status', 'available')
+      .order('created_at', { ascending: false });
 
-  if (searchQuery.trim()) {
-    const q = searchQuery.toLowerCase();
-    filtered = filtered.filter(
-      (l) =>
-        l.title.toLowerCase().includes(q) ||
-        l.description.toLowerCase().includes(q) ||
-        l.category.toLowerCase().includes(q)
-    );
-  }
+    if (selectedCategory !== 'All') {
+      query = query.eq('category', selectedCategory);
+    }
 
-  // Sort: free first if toggled
-  if (freeFirst) {
-    filtered = [...filtered].sort((a, b) => {
-      if (a.type === 'free' && b.type !== 'free') return -1;
-      if (a.type !== 'free' && b.type === 'free') return 1;
-      return 0;
-    });
-  }
+    if (searchQuery.trim()) {
+      query = query.or(
+        `title.ilike.%${searchQuery.trim()}%,description.ilike.%${searchQuery.trim()}%`
+      );
+    }
+
+    const { data, error } = await query;
+
+    if (!error && data) {
+      let results: Listing[] = data.map((row) => ({
+        ...row,
+        cover_image: row.images?.length
+          ? row.images.sort((a: { display_order: number }, b: { display_order: number }) => a.display_order - b.display_order)[0].image_url
+          : null,
+      }));
+
+      if (freeFirst) {
+        results = results.sort((a, b) => {
+          if (a.type === 'free' && b.type !== 'free') return -1;
+          if (a.type !== 'free' && b.type === 'free') return 1;
+          return 0;
+        });
+      }
+
+      setListings(results);
+    }
+    setLoading(false);
+  }, [selectedCategory, searchQuery, freeFirst]);
+
+  // Re-fetch whenever filters change (debounce search)
+  useEffect(() => {
+    const timer = setTimeout(fetchListings, searchQuery ? 300 : 0);
+    return () => clearTimeout(timer);
+  }, [fetchListings, searchQuery]);
 
   return (
     <main className="page-container">
@@ -42,7 +72,7 @@ export default function FeedPage() {
       <div className="feed-header animate-fade-in">
         <h1 className="feed-title">Marketplace</h1>
         <p className="feed-subtitle">
-          {MOCK_LISTINGS.length} items from UofM Tigers 🐯
+          {loading ? 'Loading…' : `${listings.length} items from UofM Tigers 🐯`}
         </p>
       </div>
 
@@ -65,6 +95,7 @@ export default function FeedPage() {
           </svg>
           <input
             type="text"
+            id="feed-search"
             placeholder="Search listings..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -77,6 +108,7 @@ export default function FeedPage() {
       <div className="feed-filters animate-fade-in" style={{ animationDelay: '0.15s' }}>
         <CategoryFilter selected={selectedCategory} onSelect={setSelectedCategory} />
         <button
+          id="feed-free-toggle"
           className={`feed-free-toggle ${freeFirst ? 'active' : ''}`}
           onClick={() => setFreeFirst(!freeFirst)}
         >
@@ -85,18 +117,24 @@ export default function FeedPage() {
       </div>
 
       {/* Results count */}
-      {selectedCategory !== 'All' || searchQuery.trim() ? (
+      {(selectedCategory !== 'All' || searchQuery.trim()) && !loading ? (
         <p className="feed-results-count">
-          {filtered.length} result{filtered.length !== 1 ? 's' : ''}
+          {listings.length} result{listings.length !== 1 ? 's' : ''}
           {selectedCategory !== 'All' ? ` in ${selectedCategory}` : ''}
           {searchQuery.trim() ? ` for "${searchQuery}"` : ''}
         </p>
       ) : null}
 
       {/* Listing Grid */}
-      {filtered.length > 0 ? (
+      {loading ? (
         <div className="feed-grid">
-          {filtered.map((listing, i) => (
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="listing-skeleton" />
+          ))}
+        </div>
+      ) : listings.length > 0 ? (
+        <div className="feed-grid">
+          {listings.map((listing, i) => (
             <div
               key={listing.id}
               className="animate-slide-up"
@@ -193,6 +231,17 @@ export default function FeedPage() {
           .feed-grid {
             grid-template-columns: repeat(4, 1fr);
           }
+        }
+        .listing-skeleton {
+          height: 220px;
+          border-radius: var(--radius-lg);
+          background: var(--background-card);
+          border: 1px solid var(--border);
+          animation: pulse 1.5s ease-in-out infinite;
+        }
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.4; }
         }
         .feed-empty {
           text-align: center;
